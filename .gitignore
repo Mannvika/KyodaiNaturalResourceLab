@@ -1,2 +1,6 @@
 dataset/
 *.pth
+**/*.pt
+**/*.pt
+**/*.pt
+Data/manifest.csv
