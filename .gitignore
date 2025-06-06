@@ -4,3 +4,6 @@ dataset/
 **/*.pt
 **/*.pt
 Data/manifest.csv
+**/*.001_WD_1e-05_ED_3_DC_256_128_64_LOSS_MSE..png
+**/*.001_WD_1e-05_ED_3_DC_256_128_64_LOSS_MSE..png
+**/*.001_WD_1e-05_ED_3_DC_256_128_64_LOSS_MSE-checkpoint..png
