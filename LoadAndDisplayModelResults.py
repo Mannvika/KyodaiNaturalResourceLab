@@ -14,15 +14,27 @@ from pathlib import Path
 
 print("Imports successful", flush=True)
 
+# ===================================================================
+# --- ⚙️ CONFIGURATION - EDIT THESE VARIABLES ---
+# ===================================================================
+
 # List of paths to the model files you want to compare.
-# Add or remove model paths from this list.
 MODEL_PATHS = [
     "training_run_results/best_model_LR_0.0001_WD_1e-06_ED_5_DC_128_64_32_16_8_LOSS_MSE.pth",
     "training_run_results/best_model_LR_0.001_WD_1e-05_ED_3_DC_256_128_64_LOSS_L1.pth",
 ]
+
+# Root directory of the precomputed data.
 DATA_ROOT = "Data"
+
+# Number of random samples from the test set to process.
 NUM_SAMPLES = 5
+
+# Directory where the output comparison images will be saved.
 OUTPUT_DIR = "inference_results"
+
+# ===================================================================
+
 
 class PrecomputedNoise2NoiseDataset(Dataset):
     def __init__(self, manifest_file, root_dir):
@@ -31,7 +43,7 @@ class PrecomputedNoise2NoiseDataset(Dataset):
             self.manifest = pd.read_csv(manifest_file)
         except FileNotFoundError:
             print(f"Error: Manifest file not found at {manifest_file}")
-            self.manifest = pd.DataFrame() # Empty dataframe
+            self.manifest = pd.DataFrame()
 
     def __len__(self):
         return len(self.manifest)
@@ -39,57 +51,39 @@ class PrecomputedNoise2NoiseDataset(Dataset):
     def __getitem__(self, idx):
         if idx >= len(self.manifest):
             raise IndexError("Index out of bounds")
-            
         record = self.manifest.iloc[idx]
-        
         noisy1_path = os.path.join(self.root_dir, record['noisy1_path'])
         clean_path = os.path.join(self.root_dir, record['clean_path'])
-
+        time_step = record['time_step']
+        config_name = record['config_name']
         try:
             noisy1_tensor = torch.load(noisy1_path)
             clean_tensor = torch.load(clean_path)
-            # Return the noisy input, the clean target, and the sample ID for file naming
-            return noisy1_tensor, clean_tensor, record['id']
+            return noisy1_tensor, clean_tensor, record['id'], time_step, config_name
         except FileNotFoundError as e:
             print(f"Error loading file for sample id {record['id']}: {e}")
             dummy_tensor = torch.zeros((1, 1500, 1500), dtype=torch.float)
-            return dummy_tensor, dummy_tensor, "error_id"
+            return dummy_tensor, dummy_tensor, "error_id", 0.0, "error_config"
 
 def get_model_params_from_path(model_path):
-    """
-    Parses a model filename to extract architecture hyperparameters.
-    Example filename: best_model_LR_0.001_WD_1e-05_ED_5_DC_128_64_32_16_8_LOSS_MSE.pth
-    """
     filename = Path(model_path).name
     params = {}
-    
-    # Extract Encoder Depth (ED)
     ed_match = re.search(r'ED_(\d+)', filename)
-    if ed_match:
-        params['encoder_depth'] = int(ed_match.group(1))
-    else:
-        raise ValueError(f"Could not parse encoder depth (ED_*) from {filename}")
-
-    # Extract Decoder Channels (DC)
+    if ed_match: params['encoder_depth'] = int(ed_match.group(1))
+    else: raise ValueError(f"Could not parse encoder depth (ED_*) from {filename}")
     dc_match = re.search(r'DC_((?:\d+_?)+)', filename)
     if dc_match:
         channels_str = dc_match.group(1).strip('_')
         params['decoder_channels'] = tuple(map(int, channels_str.split('_')))
-    else:
-        raise ValueError(f"Could not parse decoder channels (DC_*) from {filename}")
-
-    # Extract a readable name for plot titles
+    else: raise ValueError(f"Could not parse decoder channels (DC_*) from {filename}")
     params['combo_id'] = filename.replace('best_model_', '').replace('.pth', '')
-    
     return params
 
 def main():
-    # --- Basic Setup ---
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {DEVICE}")
 
-    # --- Load Data ---
     manifest_path = os.path.join(DATA_ROOT, 'manifest.csv')
     if not os.path.exists(manifest_path):
         print(f"Manifest file {manifest_path} not found. Cannot proceed.")
@@ -97,38 +91,28 @@ def main():
         
     full_dataset = PrecomputedNoise2NoiseDataset(manifest_file=manifest_path, root_dir=DATA_ROOT)
 
-    # Recreate the exact same test split as in training for consistency
     if len(full_dataset) > 0:
         total_samples = len(full_dataset)
         indices = list(range(total_samples))
-        # Use a fixed seed for a reproducible train/val/test split
         np.random.seed(42) 
         np.random.shuffle(indices)
-
-        train_ratio = 0.7
-        val_ratio = 0.15
-        
-        if total_samples < 3:
-            test_indices = []
-        else:
-            train_split_idx = int(train_ratio * total_samples)
-            val_split_idx = train_split_idx + int(val_ratio * total_samples)
-            test_indices = indices[val_split_idx:]
+        train_ratio, val_ratio = 0.7, 0.15
+        train_split_idx = int(train_ratio * total_samples)
+        val_split_idx = train_split_idx + int(val_ratio * total_samples)
+        test_indices = indices[val_split_idx:] if total_samples >=3 else []
         
         if not test_indices:
-            print("Warning: No test samples found based on the split ratios. Cannot run inference.")
+            print("Warning: No test samples found. Cannot run inference.")
             return
 
         test_subset = Subset(full_dataset, test_indices)
-        test_loader = DataLoader(test_subset, batch_size=1, shuffle=True) # Shuffle to get random samples
+        test_loader = DataLoader(test_subset, batch_size=1, shuffle=True)
         print(f"Loaded {len(test_subset)} test samples.")
     else:
         print("Dataset is empty. Cannot create test loader.")
         return
 
-    # --- Load Models ---
-    models = []
-    model_infos = []
+    models, model_infos = [], []
     for path in MODEL_PATHS:
         if not os.path.exists(path):
             print(f"Warning: Model path not found, skipping: {path}")
@@ -137,70 +121,82 @@ def main():
             print(f"\nLoading model from: {path}")
             params = get_model_params_from_path(path)
             model_infos.append(params)
-            
-            model = smp.Unet(
-                encoder_name='resnet18',
-                encoder_weights=None, # Not needed for inference when loading a state_dict
-                encoder_depth=params['encoder_depth'],
-                decoder_channels=params['decoder_channels'],
-                in_channels=1,
-                classes=1,
-            )
-            
+            model = smp.Unet(encoder_name='resnet18', encoder_weights=None, encoder_depth=params['encoder_depth'], decoder_channels=params['decoder_channels'], in_channels=1, classes=1)
             model.load_state_dict(torch.load(path, map_location=DEVICE))
             model.to(DEVICE)
-            model.eval() # Set model to evaluation mode
+            model.eval()
             models.append(model)
-            print(f"Successfully loaded model with ED={params['encoder_depth']} and DC={params['decoder_channels']}")
-
         except Exception as e:
             print(f"Error loading model {path}: {e}")
             
     if not models:
         print("No models were successfully loaded. Exiting.")
         return
+        
+    run_id_parts = []
+    for info in model_infos:
+        combo_id = info['combo_id']
+        loss_match = re.search(r'LOSS_(\w+)', combo_id)
+        loss_part = loss_match.group(1) if loss_match else "na"
+        ed_match = re.search(r'ED_(\d+)', combo_id)
+        ed_part = "ED" + ed_match.group(1) if ed_match else "na"
+        run_id_parts.append(f"{loss_part}-{ed_part}")
+    run_identifier = "_vs_".join(run_id_parts)
+    print(f"Generated Run Identifier for filenames: {run_identifier}")
 
-    # --- Inference and Visualization Loop ---
     print(f"\nStarting inference on {min(NUM_SAMPLES, len(test_loader))} samples...")
     with torch.no_grad():
-        for i, (noisy_tensor, clean_tensor, sample_id) in enumerate(test_loader):
-            if i >= NUM_SAMPLES:
-                break
+        for i, (noisy_tensor, clean_tensor, sample_id, time_step, config_name) in enumerate(test_loader):
+            if i >= NUM_SAMPLES: break
 
-            print(f"Processing sample {i+1}/{NUM_SAMPLES} (ID: {sample_id[0]})")
+            config_name_val, time_step_val, sample_id_val = config_name[0], time_step.item(), sample_id[0]
+            print(f"Processing Sample {i+1}/{NUM_SAMPLES} (ID: {sample_id_val}, Day: {time_step_val}, Sim: {config_name_val})")
             
             noisy_input = noisy_tensor.to(DEVICE)
-            
-            denoised_outputs = []
-            for model in models:
-                denoised_tensor = model(noisy_input)
-                denoised_np = denoised_tensor.cpu().squeeze().numpy()
-                denoised_outputs.append(denoised_np)
-
+            denoised_outputs_np = [model(noisy_input).cpu().squeeze().numpy() for model in models]
             noisy_np = noisy_tensor.cpu().squeeze().numpy()
             clean_np = clean_tensor.cpu().squeeze().numpy()
-
-            # --- Plotting ---
-            num_models = len(models)
-            fig, axes = plt.subplots(1, 2 + num_models, figsize=(6 * (2 + num_models), 6))
             
-            axes[0].imshow(noisy_np, cmap='gray')
+            all_images_for_sample = [noisy_np, clean_np] + denoised_outputs_np
+            vmin = min(img.min() for img in all_images_for_sample)
+            vmax = max(img.max() for img in all_images_for_sample)
+
+            # --- Plotting (MODIFIED for Color Bar) ---
+            num_plots = 2 + len(models)
+            fig, axes = plt.subplots(1, num_plots, figsize=(5 * num_plots, 6))
+            
+            figure_title = f"Day: {time_step_val:.2f}  |  Simulation: {config_name_val}"
+            fig.suptitle(figure_title, fontsize=20)
+
+            # Store the mappable object from one of the imshow calls
+            mappable = None
+
+            # Plot with shared vmin, vmax, and new colormap 'bwr'
+            axes[0].imshow(noisy_np, cmap='bwr', vmin=vmin, vmax=vmax)
             axes[0].set_title("Noisy Input")
             axes[0].axis('off')
 
-            for j, denoised_img in enumerate(denoised_outputs):
+            for j, denoised_img in enumerate(denoised_outputs_np):
                 ax = axes[j + 1]
                 title_text = model_infos[j]['combo_id'].replace('_', ' ')
                 ax.set_title(f"Denoised: {title_text}", fontsize=8)
-                ax.imshow(denoised_img, cmap='gray')
+                ax.imshow(denoised_img, cmap='bwr', vmin=vmin, vmax=vmax)
                 ax.axis('off')
                 
-            axes[-1].imshow(clean_np, cmap='gray')
+            # For the last image, store the returned object to use for the color bar
+            mappable = axes[-1].imshow(clean_np, cmap='bwr', vmin=vmin, vmax=vmax)
             axes[-1].set_title("Clean Ground Truth")
             axes[-1].axis('off')
 
-            plt.tight_layout()
-            save_path = os.path.join(OUTPUT_DIR, f"comparison_sample_{sample_id[0]}.png")
+            # **NEW**: Add a single, shared color bar to the figure
+            if mappable:
+                # `ax=axes.ravel().tolist()` applies the colorbar to all subplots
+                # `shrink` makes the colorbar a bit smaller than the plot height
+                # `pad` adds a small space between the plots and the colorbar
+                fig.colorbar(mappable, ax=axes.ravel().tolist(), shrink=0.7, pad=0.02)
+
+            plt.tight_layout(rect=[0, 0, 1, 0.95]) # Adjust rect to leave space for suptitle
+            save_path = os.path.join(OUTPUT_DIR, f"{run_identifier}_sample_{sample_id_val}.png")
             plt.savefig(save_path)
             plt.close(fig)
             print(f"Saved comparison plot to {save_path}")
