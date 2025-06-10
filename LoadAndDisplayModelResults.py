@@ -20,9 +20,10 @@ print("Imports successful", flush=True)
 
 # List of paths to the model files you want to compare.
 MODEL_PATHS = [
-    "training_run_results/best_model_LR_1e-05_WD_1e-07_ED_4_DC_128_64_32_16_LOSS_SmoothL1.pth",
-    "training_run_results/best_model_LR_1e-05_WD_1e-06_ED_4_DC_128_64_32_16_LOSS_SmoothL1.pth",
-    "training_run_results/best_model_LR_1e-05_WD_1e-07_ED_3_DC_256_128_64_LOSS_SmoothL1.pth",
+    "training_run_results/best_model_LR_1e-05_WD_1e-05_ED_4_DC_128_64_32_16_LOSS_SmoothL1.pth",
+    "training_run_results/best_model_LR_0.0001_WD_1e-07_ED_3_DC_256_128_64_LOSS_L1.pth",
+    "training_run_results/best_model_LR_0.0001_WD_1e-06_ED_3_DC_256_128_64_LOSS_L1.pth",
+    "training_run_results/best_model_LR_0.0001_WD_1e-05_ED_3_DC_256_128_64_LOSS_MSE.pth"
 ]
 
 # Root directory of the precomputed data.
@@ -32,7 +33,7 @@ DATA_ROOT = "Data"
 NUM_SAMPLES = 10
 
 # Directory where the output comparison images will be saved.
-OUTPUT_DIR = "group1results"
+OUTPUT_DIR = "group2results"
 
 # ===================================================================
 
