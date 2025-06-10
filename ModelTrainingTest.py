@@ -329,9 +329,9 @@ else:
             if train_losses_for_combo or val_losses_for_combo:
                 plt.figure(figsize=(6,3))
                 if train_losses_for_combo:
-                    plt.plot(train_losses_for_combo, label=f"Training Loss ({loss_name})")
+                    plt.plot(train_losses_for_combo, label="Training Loss")
                 if val_losses_for_combo:
-                    plt.plot(val_losses_for_combo, label=f"Validation Loss ({loss_name})")
+                    plt.plot(val_losses_for_combo, label="Validation Loss")
                 
                 plt.xlabel("Epoch")
                 plt.ylabel("Loss")
