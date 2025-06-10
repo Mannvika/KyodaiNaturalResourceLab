@@ -194,11 +194,11 @@ hyperparameter_settings = {
     'weight_decays': [0, 1e-07, 1e-06, 5e-6],
 }
 
-loss_functions_config = {
+''' loss_functions_config = {
     "MSE": nn.MSELoss,
     "L1": nn.L1Loss,
     "SmoothL1": nn.SmoothL1Loss
-}
+} '''
 
 loss_weight_settings = {
     'w_pixel': [1.0],
@@ -206,7 +206,7 @@ loss_weight_settings = {
     'w_tv': [1e-4, 1e-5]
 }
 
-output_dir = "training_run_results"
+output_dir = "training_run_results_combined_loss"
 os.makedirs(output_dir, exist_ok=True)
 
 def train_one_epoch(loader, model, optimizer, loss_fn, device, scaler):
