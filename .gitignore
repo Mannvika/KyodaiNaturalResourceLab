@@ -7,3 +7,16 @@ Data/manifest.csv
 **/*.001_WD_1e-05_ED_3_DC_256_128_64_LOSS_MSE..png
 **/*.001_WD_1e-05_ED_3_DC_256_128_64_LOSS_MSE..png
 **/*.001_WD_1e-05_ED_3_DC_256_128_64_LOSS_MSE-checkpoint..png
+my_job_errors_4757766.err
+my_job_errors_4776770.err
+my_job_errors_4776771.err
+my_job_errors_4776989.err
+my_job_output_4757766.log
+my_job_output_4776770.log
+my_job_output_4776771.log
+my_job_output_4776989.log
+run_my_job.slurm
+**/*.001_WD_1e-05_ED_3_DC_256_128_64_LOSS_MSE-checkpoint..png
+**/*.0001_WD_1e-05_ED_3_DC_256_128_64_LOSS_L1..png
+**/*.0001_WD_1e-06_ED_3_DC_256_128_64_LOSS_L1..png
+**/*.0001_WD_1e-06_ED_3_DC_256_128_64_LOSS_MSE..png
