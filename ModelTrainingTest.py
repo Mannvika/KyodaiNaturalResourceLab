@@ -156,6 +156,27 @@ class PerceptualLoss(nn.Module):
         
         return self.loss_fn(output_features, target_features)
 
+class CombinedLoss(nn.Module):
+    def __init__(self, device, w_pixel=1.0, w_perc=0.1, w_tv=1e-4):
+        super(CombinedLoss, self).__init__()
+        self.w_pixel = w_pixel
+        self.w_perc = w_perc
+        self.w_tv = w_tv
+        
+        self.pixel_loss = nn.SmoothL1Loss()
+        self.perc_loss = PerceptualLoss(device)
+        self.tv_loss = TVLoss()
+        print(f"CombinedLoss initialized with weights: Pixel={w_pixel}, Perceptual={w_perc}, TV={w_tv}")
+
+    def forward(self, output, target):
+        # Calculate each loss component
+        loss_p = self.pixel_loss(output, target)
+        loss_g = self.perc_loss(output, target)
+        loss_t = self.tv_loss(output)
+        
+        # Combine the losses using the weights
+        total_loss = (self.w_pixel * loss_p) + (self.w_perc * loss_g) + (self.w_tv * loss_t)
+        return total_loss
 
 
 # --- FIX: Define valid architectures to prevent ValueError ---
@@ -177,6 +198,12 @@ loss_functions_config = {
     "MSE": nn.MSELoss,
     "L1": nn.L1Loss,
     "SmoothL1": nn.SmoothL1Loss
+}
+
+loss_weight_settings = {
+    'w_pixel': [1.0],
+    'w_perc': [0.1, 0.01],
+    'w_tv': [1e-4, 1e-5]
 }
 
 output_dir = "training_run_results"
@@ -230,91 +257,92 @@ if 'train_loader' not in globals() or train_loader is None:
 else:
     param_value_lists = [
         hyperparameter_settings['learning_rates'],
-        hyperparameter_settings['weight_decays']
+        hyperparameter_settings['weight_decays'],
+        loss_weight_settings['w_pixel'],
+        loss_weight_settings['w_perc'],
+        loss_weight_settings['w_tv']
     ]
 
     for arch in architectures:
         current_ed = arch['depth']
         current_dc = arch['channels']
         
-        for loss_name, LossClass in loss_functions_config.items():
-            for combo_values in product(*param_value_lists):
-                current_lr, current_wd = combo_values
-                
-                combo_id_parts = [
-                    f"LR_{current_lr}",
-                    f"WD_{current_wd}",
-                    f"ED_{current_ed}",
-                    f"DC_{'_'.join(map(str, current_dc))}",
-                    f"LOSS_{loss_name}"
-                ]
-                combo_id = "_".join(combo_id_parts)
-                print(f"\n\n{'='*10} Starting Run for Combination: {combo_id} {'='*10}")
+        for combo_values in product(*param_value_lists):
+            current_lr, current_wd, w_p, w_g, w_t = combo_values
+            combo_id_parts = [
+                f"LR_{current_lr}",
+                f"WD_{current_wd}",
+                f"ED_{current_ed}",
+                f"DC_{'_'.join(map(str, current_dc))}",
+                f"W_P_{w_p}_W_G_{w_g}_W_T_{w_t}" # New ID for weights
+            ]
+            combo_id = "_".join(combo_id_parts)
+            print(f"\n\n{'='*10} Starting Run for Combination: {combo_id} {'='*10}")
 
-                model = smp.Unet(
-                    encoder_name=ENCODER,
-                    encoder_weights=ENCODER_WEIGHTS,
-                    encoder_depth=current_ed,
-                    decoder_channels=current_dc,
-                    in_channels=IN_CHANNELS,
-                    classes=OUT_CHANNELS,
-                ).to(DEVICE)
+            model = smp.Unet(
+                encoder_name=ENCODER,
+                encoder_weights=ENCODER_WEIGHTS,
+                encoder_depth=current_ed,
+                decoder_channels=current_dc,
+                in_channels=IN_CHANNELS,
+                classes=OUT_CHANNELS,
+            ).to(DEVICE)
 
-                criterion = LossClass().to(DEVICE)
-                optimizer = optim.Adam(model.parameters(), lr=current_lr, weight_decay=current_wd)
-                # FIX: Updated GradScaler call to resolve FutureWarning
-                scaler = torch.amp.GradScaler(enabled=(DEVICE.type == 'cuda'))
+            criterion = CombinedLoss(DEVICE, w_pixel=w_p, w_perc=w_g, w_tv=w_t).to(DEVICE)
+            optimizer = optim.Adam(model.parameters(), lr=current_lr, weight_decay=current_wd)
+            # FIX: Updated GradScaler call to resolve FutureWarning
+            scaler = torch.amp.GradScaler(enabled=(DEVICE.type == 'cuda'))
 
-                train_losses_for_combo, val_losses_for_combo = [], []
-                best_val_loss_for_combo = float('inf')
-                best_model_state_for_combo = None
+            train_losses_for_combo, val_losses_for_combo = [], []
+            best_val_loss_for_combo = float('inf')
+            best_model_state_for_combo = None
 
-                print(f"\nStarting training for {combo_id}...")
-                for epoch in range(NUM_EPOCHS):
-                    print(f"\n--- Epoch {epoch+1}/{NUM_EPOCHS} for {combo_id} ---")
-                    train_loss = train_one_epoch(train_loader, model, optimizer, criterion, DEVICE, scaler)
-                    train_losses_for_combo.append(train_loss)
+            print(f"\nStarting training for {combo_id}...")
+            for epoch in range(NUM_EPOCHS):
+                print(f"\n--- Epoch {epoch+1}/{NUM_EPOCHS} for {combo_id} ---")
+                train_loss = train_one_epoch(train_loader, model, optimizer, criterion, DEVICE, scaler)
+                train_losses_for_combo.append(train_loss)
 
-                    current_epoch_val_loss = float('inf')
-                    if 'val_loader' in globals() and val_loader is not None:
-                        current_epoch_val_loss = validate_one_epoch(val_loader, model, criterion, DEVICE)
-                        val_losses_for_combo.append(current_epoch_val_loss)
+                current_epoch_val_loss = float('inf')
+                if 'val_loader' in globals() and val_loader is not None:
+                    current_epoch_val_loss = validate_one_epoch(val_loader, model, criterion, DEVICE)
+                    val_losses_for_combo.append(current_epoch_val_loss)
 
-                        if current_epoch_val_loss < best_val_loss_for_combo:
-                            best_val_loss_for_combo = current_epoch_val_loss
-                            best_model_state_for_combo = model.state_dict()
-                            print(f"New best validation loss for {combo_id}: {best_val_loss_for_combo:.4f} at epoch {epoch+1}")
-                    else:
-                        pass
-                
-                print(f"\nTraining finished for {combo_id}!")
-
-                if best_model_state_for_combo is not None and 'val_loader' in globals() and val_loader is not None:
-                    model_save_path = os.path.join(output_dir, f"best_model_{combo_id}.pth")
-                    torch.save(best_model_state_for_combo, model_save_path)
-                    print(f"Saved best model for {combo_id} to {model_save_path} (Val Loss: {best_val_loss_for_combo:.4f})")
-                elif 'val_loader' in globals() and val_loader is not None:
-                    print(f"No improvement in validation loss for {combo_id}. Best model not saved.")
+                    if current_epoch_val_loss < best_val_loss_for_combo:
+                        best_val_loss_for_combo = current_epoch_val_loss
+                        best_model_state_for_combo = model.state_dict()
+                        print(f"New best validation loss for {combo_id}: {best_val_loss_for_combo:.4f} at epoch {epoch+1}")
                 else:
-                    print(f"No validation loader provided for {combo_id}. Best model not saved.")
+                    pass
+            
+            print(f"\nTraining finished for {combo_id}!")
 
-                if train_losses_for_combo or val_losses_for_combo:
-                    plt.figure(figsize=(6,3))
-                    if train_losses_for_combo:
-                        plt.plot(train_losses_for_combo, label=f"Training Loss ({loss_name})")
-                    if val_losses_for_combo:
-                        plt.plot(val_losses_for_combo, label=f"Validation Loss ({loss_name})")
-                    
-                    plt.xlabel("Epoch")
-                    plt.ylabel("Loss")
-                    title_str = f"Loss Over Epochs - {combo_id}"
-                    plt.title(title_str.replace('_', ' '))
-                    plt.legend()
-                    plt.grid(True)
-                    plt.tight_layout()
-                    plot_save_path = os.path.join(output_dir, f"loss_plot_{combo_id}.png")
-                    plt.savefig(plot_save_path)
-                    plt.close()
-                    print(f"Saved loss plot for {combo_id} to {plot_save_path}")
+            if best_model_state_for_combo is not None and 'val_loader' in globals() and val_loader is not None:
+                model_save_path = os.path.join(output_dir, f"best_model_{combo_id}.pth")
+                torch.save(best_model_state_for_combo, model_save_path)
+                print(f"Saved best model for {combo_id} to {model_save_path} (Val Loss: {best_val_loss_for_combo:.4f})")
+            elif 'val_loader' in globals() and val_loader is not None:
+                print(f"No improvement in validation loss for {combo_id}. Best model not saved.")
+            else:
+                print(f"No validation loader provided for {combo_id}. Best model not saved.")
+
+            if train_losses_for_combo or val_losses_for_combo:
+                plt.figure(figsize=(6,3))
+                if train_losses_for_combo:
+                    plt.plot(train_losses_for_combo, label=f"Training Loss ({loss_name})")
+                if val_losses_for_combo:
+                    plt.plot(val_losses_for_combo, label=f"Validation Loss ({loss_name})")
+                
+                plt.xlabel("Epoch")
+                plt.ylabel("Loss")
+                title_str = f"Loss Over Epochs - {combo_id}"
+                plt.title(title_str.replace('_', ' '))
+                plt.legend()
+                plt.grid(True)
+                plt.tight_layout()
+                plot_save_path = os.path.join(output_dir, f"loss_plot_{combo_id}.png")
+                plt.savefig(plot_save_path)
+                plt.close()
+                print(f"Saved loss plot for {combo_id} to {plot_save_path}")
 
 print("\nAll hyperparameter tuning runs finished!")
