@@ -16,6 +16,7 @@ import os
 import pandas as pd
 import segmentation_models_pytorch as smp
 import re
+import torchvision.models as models
 
 print("Imports successful", flush=True)
 
@@ -122,16 +123,54 @@ IN_CHANNELS = 1
 OUT_CHANNELS = 1
 NUM_EPOCHS = 5
 
+class TVLoss(nn.Module):
+    """Total Variation Loss to encourage smoothness in the output."""
+    def __init__(self):
+        super(TVLoss, self).__init__()
+
+    def forward(self, x):
+        batch_size, c, h, w = x.shape
+        tv_h = torch.pow(x[:, :, 1:, :] - x[:, :, :-1, :], 2).sum()
+        tv_w = torch.pow(x[:, :, :, 1:] - x[:, :, :, :-1], 2).sum()
+        return (tv_h + tv_w) / (batch_size * c * h * w)
+
+class PerceptualLoss(nn.Module):
+    """Perceptual Loss using a pre-trained VGG19 network."""
+    def __init__(self, device):
+        super(PerceptualLoss, self).__init__()
+        vgg = models.vgg19(weights=models.VGG19_Weights.IMAGENET1K_V1).features.to(device).eval()
+        for param in vgg.parameters():
+            param.requires_grad = False
+        
+        self.features = nn.Sequential(*list(vgg.children())[:36]) 
+        self.loss_fn = nn.L1Loss()
+
+    def forward(self, output, target):
+        if output.shape[1] == 1:
+            output = output.repeat(1, 3, 1, 1)
+        if target.shape[1] == 1:
+            target = target.repeat(1, 3, 1, 1)
+        
+        output_features = self.features(output)
+        target_features = self.features(target)
+        
+        return self.loss_fn(output_features, target_features)
+
+
+
 # --- FIX: Define valid architectures to prevent ValueError ---
 architectures = [
     {"depth": 3, "channels": (256, 128, 64)},
+    {"depth": 3, "channels": (128, 64, 32)},
+    {"depth": 3, "channels": (192, 96, 48)},
     {"depth": 4, "channels": (128, 64, 32, 16)},
-    {"depth": 5, "channels": (128, 64, 32, 16, 8)},
+    {"depth": 4, "channels": (192, 96, 48, 24)},
+    {"depth": 4, "channels": (256, 128, 64, 32)},
 ]
 
 hyperparameter_settings = {
-    'learning_rates': [1e-3, 1e-4, 1e-5],
-    'weight_decays': [1e-5, 1e-6, 1e-7],
+    'learning_rates': [8e-6, 1e-4, 8e-5, 1e-5],
+    'weight_decays': [0, 1e-07, 1e-06, 5e-6],
 }
 
 loss_functions_config = {
@@ -151,7 +190,6 @@ def train_one_epoch(loader, model, optimizer, loss_fn, device, scaler):
     for batch_idx, (noisy1, noisy2, _c, _ts, _cn) in enumerate(loader):
         noisy1, noisy2 = noisy1.to(device), noisy2.to(device)
 
-        # FIX: Updated autocast call to resolve FutureWarning
         with torch.amp.autocast(device_type=device.type, enabled=(device.type == 'cuda')):
             denoised_output = model(noisy1)
             loss = loss_fn(denoised_output, noisy2)
@@ -190,7 +228,6 @@ print("\nStarting hyperparameter tuning...")
 if 'train_loader' not in globals() or train_loader is None:
     print("Training cannot proceed: train_loader is None or not defined in global scope.")
 else:
-    # --- FIX: Restructure loop to iterate through valid architectures ---
     param_value_lists = [
         hyperparameter_settings['learning_rates'],
         hyperparameter_settings['weight_decays']
