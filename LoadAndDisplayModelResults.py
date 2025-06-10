@@ -161,7 +161,6 @@ def main():
             vmin = min(img.min() for img in all_images_for_sample)
             vmax = max(img.max() for img in all_images_for_sample)
 
-            # --- Plotting (MODIFIED for Color Bar) ---
             num_plots = 2 + len(models)
             fig, axes = plt.subplots(1, num_plots, figsize=(5 * num_plots, 6))
             
@@ -188,11 +187,7 @@ def main():
             axes[-1].set_title("Clean Ground Truth")
             axes[-1].axis('off')
 
-            # **NEW**: Add a single, shared color bar to the figure
             if mappable:
-                # `ax=axes.ravel().tolist()` applies the colorbar to all subplots
-                # `shrink` makes the colorbar a bit smaller than the plot height
-                # `pad` adds a small space between the plots and the colorbar
                 fig.colorbar(mappable, ax=axes.ravel().tolist(), shrink=0.7, pad=0.02)
 
             plt.tight_layout(rect=[0, 0, 1, 0.95]) # Adjust rect to leave space for suptitle
