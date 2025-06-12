@@ -22,3 +22,5 @@ run_my_job.slurm
 **/*.0001_WD_1e-06_ED_3_DC_256_128_64_LOSS_MSE..png
 training_run_results/
 *.png
+Kyoto-Osaka_gsi.dehm_be
+training_run_results_combined_loss.zip
