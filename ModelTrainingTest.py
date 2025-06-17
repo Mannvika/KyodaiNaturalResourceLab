@@ -161,24 +161,19 @@ else:
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {DEVICE}")
 
-ENCODER = 'resnet50'
-ENCODER_WEIGHTS = 'imagenet'
+ENCODER = 'resnet18'
+ENCODER_WEIGHTS = None
 IN_CHANNELS = 1
 OUT_CHANNELS = 1
 NUM_EPOCHS = 15 # Increased epochs to give EarlyStopping a chance to work
 
 architectures = [
-    {"depth": 3, "channels": (128, 64, 32)},
-    {"depth": 3, "channels": (192, 96, 48)},
-    {"depth": 3, "channels": (256, 128, 64)},
-    {"depth": 4, "channels": (128, 64, 32, 16)},
-    {"depth": 4, "channels": (192, 96, 48, 24)},
-    {"depth": 4, "channels": (256, 128, 64, 32)}
+    {"depth": 4, "channels": (256, 128, 64, 32)},
 ]
 
 hyperparameter_settings = {
-    'learning_rates': [1e-5],
-    'weight_decays': [0, 1e-07],
+    'learning_rates': [1e-2],
+    'weight_decays': [1e-07],
 }
 
 loss_functions_config = {
