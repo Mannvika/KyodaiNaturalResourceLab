@@ -165,14 +165,14 @@ ENCODER = 'resnet18'
 ENCODER_WEIGHTS = None
 IN_CHANNELS = 1
 OUT_CHANNELS = 1
-NUM_EPOCHS = 15 # Increased epochs to give EarlyStopping a chance to work
+NUM_EPOCHS = 15 
 
 architectures = [
     {"depth": 4, "channels": (256, 128, 64, 32)},
 ]
 
 hyperparameter_settings = {
-    'learning_rates': [1e-2],
+    'learning_rates': [1e-4],
     'weight_decays': [1e-07],
 }
 

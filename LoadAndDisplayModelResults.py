@@ -19,7 +19,7 @@ print("Imports successful", flush=True)
 # ===================================================================
 
 MODEL_PATHS = [
-    r"training_run_results_top\best_model_LR_1e-05_WD_0_ED_3_DC_128_64_32_LOSS_SmoothL1.pth",
+    r"training_run_results_top\best_model_LR_0.0001_WD_1e-07_ED_4_DC_256_128_64_32_LOSS_SmoothL1.pth",
 ]
 DATA_ROOT = "DataTop"
 NUM_SAMPLES = 15
@@ -131,7 +131,7 @@ def main():
             model_infos.append(params)
             
             model = smp.Unet(
-                encoder_name='resnet50', 
+                encoder_name='resnet18', 
                 encoder_weights=None, 
                 encoder_depth=params['encoder_depth'], 
                 decoder_channels=params['decoder_channels'], 
