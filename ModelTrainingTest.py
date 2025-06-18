@@ -18,22 +18,12 @@ import segmentation_models_pytorch as smp
 import re
 import functools
 
-# Make all print statements flush by default
 print = functools.partial(print, flush=True)
 
 print("Imports successful")
 
-# --- EarlyStopping Class Definition ---
 class EarlyStopping:
-    """Early stops the training if validation loss doesn't improve after a given patience."""
     def __init__(self, patience=5, verbose=False, delta=0, path='checkpoint.pth'):
-        """
-        Args:
-            patience (int): How long to wait after last time validation loss improved.
-            verbose (bool): If True, prints a message for each validation loss improvement. 
-            delta (float): Minimum change in the monitored quantity to qualify as an improvement.
-            path (str): Path for the checkpoint to be saved to.
-        """
         self.patience = patience
         self.verbose = verbose
         self.counter = 0
@@ -59,13 +49,12 @@ class EarlyStopping:
             self.counter = 0
 
     def save_checkpoint(self, val_loss, model):
-        '''Saves model when validation loss decreases.'''
         if self.verbose:
             print(f'Validation loss decreased ({self.val_loss_min:.6f} --> {val_loss:.6f}).  Saving model ...')
         torch.save(model.state_dict(), self.path)
         self.val_loss_min = val_loss
 
-PRECOMPUTED_DATA_ROOT = r"DataTop"
+PRECOMPUTED_DATA_ROOT = r"datasets/TopographicData"
 
 class PrecomputedNoise2NoiseDataset(Dataset):
     def __init__(self, manifest_file, root_dir):
@@ -168,16 +157,16 @@ OUT_CHANNELS = 1
 NUM_EPOCHS = 15 
 
 architectures = [
-    {"depth": 4, "channels": (256, 128, 64, 32)},
+    {"depth": 3, "channels": (128, 64, 32)},
 ]
 
 hyperparameter_settings = {
-    'learning_rates': [1e-4],
+    'learning_rates': [1e-04],
     'weight_decays': [1e-07],
 }
 
 loss_functions_config = {
-    "SmoothL1": nn.SmoothL1Loss
+    "MAE": nn.L1Loss
 }
 
 output_dir = "training_run_results_top"
