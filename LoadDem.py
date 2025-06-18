@@ -1,11 +1,8 @@
 import matplotlib.pyplot as plt
 import numpy as np
+from scipy.ndimage import gaussian_filter
 
-def LoadDem(dem_path):
-    data_type = np.dtype('>f4')
-    raw_data = np.fromfile(dem_path, dtype=data_type)
-    dem_data = raw_data.reshape((12602, 11702))
-    return dem_data
+
     
 if __name__ == "__main__":
     dem_file = 'Kyoto-Osaka.dehm'
