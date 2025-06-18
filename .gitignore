@@ -26,3 +26,6 @@ Kyoto-Osaka_gsi.dehm_be
 training_run_results_combined_loss.zip
 baselines.txt
 dem.dehm_be
+datasets/Data/manifest.csv
+.gitignore
+Kyoto-Osaka.dehm
