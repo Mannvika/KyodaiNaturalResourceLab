@@ -20,8 +20,8 @@ print("Imports successful", flush=True)
 
 MODEL_PATHS = [
     r"training_run_results_top\best_model_LR_1e-05_WD_1e-07_ED_4_DC_256_128_64_32_LOSS_SmoothL1.pth",
-    r"training_run_results_top\best_model_LR_1e-05_WD_1e-07_ED_3_DC_256_128_64_LOSS_SmoothL1.pth",
-    r"training_run_results_top\best_model_LR_1e-05_WD_1e-07_ED_3_DC_256_128_64_LOSS_MSELoss.pth"
+    r"training_run_results_top\best_model_LR_1e-05_WD_1e-07_ED_4_DC_256_128_64_32_LOSS_SSIM.pth",
+    r"training_run_results_top\best_model_LR_1e-05_WD_1e-07_ED_4_DC_256_128_64_32_LOSS_MSELoss.pth"
 ]
 DATA_ROOT = r"datasets/TopographicData"
 NUM_SAMPLES = 15
