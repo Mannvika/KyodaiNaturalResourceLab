@@ -22,16 +22,18 @@ print("Imports successful", flush=True)
 
 MODEL_PATHS = []
 
+MODEL_ROOT = r'final_comparison_results/'
+
 # get all model paths from the current directory
-for file in os.listdir(r'combined_training\training_run_results_top'):
+for file in os.listdir(MODEL_ROOT):
     if file.startswith('best_model_') and file.endswith('.pth'):
-        file = os.path.join(r'combined_training\training_run_results_top', file)
+        file = os.path.join(MODEL_ROOT, file)
         MODEL_PATHS.append(file)
 
 
 DATA_ROOT = r"datasets/TopographicData"
-NUM_SAMPLES = 15
-OUTPUT_DIR = "CombinedLossResults"
+NUM_SAMPLES = 40
+OUTPUT_DIR = "IdenticalTestResults1"
 
 # ===================================================================
 
@@ -100,34 +102,29 @@ def main():
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {DEVICE}")
 
-    manifest_path = Path(DATA_ROOT) / 'manifest.csv'
+    # --- MODIFICATION START ---
+
+    # 1. Path now points to your dedicated test manifest.
+    manifest_path = Path(r'data_splits') / "test_manifest.csv"
     if not manifest_path.exists():
         print(f"Manifest file {manifest_path} not found. Cannot proceed.")
         return
     
-    full_dataset = PrecomputedNoise2NoiseDataset(manifest_file=manifest_path, root_dir=DATA_ROOT, for_training=False)
+    # 2. Load the manifest directly as the test dataset.
+    test_dataset = PrecomputedNoise2NoiseDataset(manifest_file=manifest_path, root_dir=DATA_ROOT, for_training=False)
 
-    if len(full_dataset) > 0:
-        total_samples = len(full_dataset)
-        indices = list(range(total_samples))
-        np.random.seed(42) 
-        np.random.shuffle(indices)
-        train_ratio, val_ratio = 0.7, 0.15
-        train_split_idx = int(train_ratio * total_samples)
-        val_split_idx = train_split_idx + int(val_ratio * total_samples)
-        test_indices = indices[val_split_idx:] if total_samples >=3 else []
-        
-        if not test_indices:
-            print("Warning: No test samples found. Cannot run inference.")
-            return
-
-        test_subset = Subset(full_dataset, test_indices)
-        test_loader = DataLoader(test_subset, batch_size=1, shuffle=True)
-        print(f"Loaded {len(test_subset)} test samples.")
+    # 3. Create the DataLoader from the entire dataset, removing the old splitting logic.
+    if len(test_dataset) > 0:
+        # The DataLoader will use all samples from the test_dataset.
+        # shuffle=True ensures you get a random assortment if NUM_SAMPLES is less than the total.
+        test_loader = DataLoader(test_dataset, batch_size=1, shuffle=True)
+        print(f"Loaded {len(test_dataset)} test samples from {manifest_path}.")
     else:
-        print("Dataset is empty. Cannot create test loader.")
+        print("Test dataset is empty. Cannot create test loader.")
         return
 
+    # --- MODIFICATION END ---
+        
     models, model_infos = [], []
     for path in MODEL_PATHS:
         if not os.path.exists(path):
@@ -147,7 +144,8 @@ def main():
                 classes=1
             )
             
-            model.load_state_dict(torch.load(path, map_location=DEVICE))
+            # Use weights_only=True for safer loading
+            model.load_state_dict(torch.load(path, map_location=DEVICE, weights_only=True))
             model.to(DEVICE)
             model.eval()
             models.append(model)
@@ -175,7 +173,6 @@ def main():
         for noisy_tensor, clean_tensor, sample_id, time_step, config_name in test_loader:
             if processed_samples >= NUM_SAMPLES: break
 
-            # <-- MODIFICATION: Gracefully handle samples that failed to load
             if isinstance(sample_id[0], str) and sample_id[0] == "error_id":
                 print("Skipping sample due to a data loading error.")
                 continue
@@ -226,6 +223,5 @@ def main():
 
     print("\nInference and display script finished.")
 
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
