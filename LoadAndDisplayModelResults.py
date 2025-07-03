@@ -18,14 +18,20 @@ print("Imports successful", flush=True)
 # --- ⚙️ CONFIGURATION - EDIT THESE VARIABLES ---
 # ===================================================================
 
-MODEL_PATHS = [
-    r"training_run_results_top\best_model_LR_1e-05_WD_1e-07_ED_4_DC_256_128_64_32_LOSS_SmoothL1.pth",
-    r"training_run_results_top\best_model_LR_1e-05_WD_1e-07_ED_4_DC_256_128_64_32_LOSS_SSIM.pth",
-    r"training_run_results_top\best_model_LR_1e-05_WD_1e-07_ED_4_DC_256_128_64_32_LOSS_SSIM+SmoothL1.pth"
-]
+
+
+MODEL_PATHS = []
+
+# get all model paths from the current directory
+for file in os.listdir(r'combined_training\training_run_results_top'):
+    if file.startswith('best_model_') and file.endswith('.pth'):
+        file = os.path.join(r'combined_training\training_run_results_top', file)
+        MODEL_PATHS.append(file)
+
+
 DATA_ROOT = r"datasets/TopographicData"
 NUM_SAMPLES = 15
-OUTPUT_DIR = "topo_results"
+OUTPUT_DIR = "CombinedLossResults"
 
 # ===================================================================
 
@@ -133,7 +139,7 @@ def main():
             model_infos.append(params)
             
             model = smp.Unet(
-                encoder_name='resnet18', 
+                encoder_name='resnet34', 
                 encoder_weights=None, 
                 encoder_depth=params['encoder_depth'], 
                 decoder_channels=params['decoder_channels'], 
