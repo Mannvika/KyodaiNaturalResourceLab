@@ -20,15 +20,17 @@ print("Imports successful", flush=True)
 
 
 
-MODEL_PATHS = []
+MODEL_PATHS = [r'best_model_LR_1e-05_WD_1e-07_ED_3_DC_256_128_64_LOSS_FFT.pth']
 
 MODEL_ROOT = r'final_comparison_results/'
 
+'''
 # get all model paths from the current directory
 for file in os.listdir(MODEL_ROOT):
     if file.startswith('best_model_') and file.endswith('.pth'):
         file = os.path.join(MODEL_ROOT, file)
         MODEL_PATHS.append(file)
+'''
 
 
 DATA_ROOT = r"datasets/TopographicData"
