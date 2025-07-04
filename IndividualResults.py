@@ -24,11 +24,11 @@ MODEL_ROOT = r'wideresults/'
 # Root directory for the dataset
 DATA_ROOT = r"datasets/TopographicData"
 
-# Directory to save the output images
-OUTPUT_DIR = "IndividualModelResults"
+# Main directory to save all output folders
+OUTPUT_DIR = "OrganizedTestResults"
 
 # Number of random test samples to process
-NUM_SAMPLES = 5
+NUM_SAMPLES = 50
 
 # ===================================================================
 
@@ -96,14 +96,12 @@ def get_model_params_from_path(model_path):
     filename = Path(model_path).name
     params = {}
     
-    # Extract encoder depth
     ed_match = re.search(r'ED_(\d+)', filename)
     if ed_match: 
         params['encoder_depth'] = int(ed_match.group(1))
     else: 
         raise ValueError(f"Could not parse encoder depth (ED_*) from {filename}")
     
-    # Extract decoder channels
     dc_match = re.search(r'DC_((?:\d+_?)+)', filename)
     if dc_match:
         channels_str = dc_match.group(1).strip('_')
@@ -111,7 +109,6 @@ def get_model_params_from_path(model_path):
     else: 
         raise ValueError(f"Could not parse decoder channels (DC_*) from {filename}")
     
-    # Create a unique ID for the model configuration
     params['combo_id'] = filename.replace('best_model_', '').replace('.pth', '')
     return params
 
@@ -132,7 +129,6 @@ def main():
         print("Test dataset is empty. Cannot create test loader.")
         return
         
-    # Load the entire test set and shuffle to get random samples
     test_loader = DataLoader(test_dataset, batch_size=1, shuffle=True)
     print(f"Loaded {len(test_dataset)} test samples from {manifest_path}.")
 
@@ -177,7 +173,6 @@ def main():
             if processed_samples >= NUM_SAMPLES:
                 break
 
-            # This is the corrected line
             if config_name[0] == "error_config":
                 print("Skipping sample due to a data loading error.")
                 continue
@@ -186,59 +181,59 @@ def main():
             time_step_val = time_step.item()
             sample_id_val = sample_id.item()
             
-            print(f"Processing Sample {processed_samples + 1}/{NUM_SAMPLES} (ID: {sample_id_val}, Day: {time_step_val}, Sim: {config_name_val})")
+            print(f"Processing Sample {processed_samples + 1}/{NUM_SAMPLES} (ID: {sample_id_val})")
             
+            # *** MODIFICATION START: Create a dedicated folder for each sample ***
+            sample_dir_name = f"Sample_{sample_id_val}_Day_{time_step_val:.2f}_Sim_{config_name_val}"
+            sample_output_dir = Path(OUTPUT_DIR) / sample_dir_name
+            os.makedirs(sample_output_dir, exist_ok=True)
+            print(f"  -> Created output directory: {sample_output_dir}")
+            # *** MODIFICATION END ***
+
             noisy_input = noisy_tensor.to(DEVICE)
             noisy_np = noisy_tensor.cpu().squeeze().numpy()
             clean_np = clean_tensor.cpu().squeeze().numpy()
-
-            # Generate all denoised outputs for the current sample
+            
             denoised_outputs_np = [model(noisy_input).cpu().squeeze().numpy() for model in models]
             
-            # *** MODIFICATION START: Loop through each model to create individual plots ***
             for i, model in enumerate(models):
                 denoised_np = denoised_outputs_np[i]
                 model_info = model_infos[i]
 
-                # Create a 3-panel figure for each model
                 fig, axes = plt.subplots(1, 3, figsize=(18, 6))
                 fig.suptitle(f"Day: {time_step_val:.2f} | Sim: {config_name_val} | Sample ID: {sample_id_val}", fontsize=16)
 
-                # Dynamically calculate color limits for this specific triplet for best contrast
                 vmin = min(noisy_np.min(), clean_np.min(), denoised_np.min())
                 vmax = max(noisy_np.max(), clean_np.max(), denoised_np.max())
 
-                # Plot 1: Noisy Input
                 axes[0].imshow(noisy_np, cmap='bwr', vmin=vmin, vmax=vmax)
                 axes[0].set_title("Noisy Input")
                 axes[0].axis('off')
                 
-                # Plot 2: Denoised Output (from the current model)
                 model_title = model_info['combo_id'].replace('_', ' ')
                 axes[1].set_title(f"Denoised: {model_title}", fontsize=12)
                 mappable = axes[1].imshow(denoised_np, cmap='bwr', vmin=vmin, vmax=vmax)
                 axes[1].axis('off')
                 
-                # Plot 3: Clean Ground Truth
                 axes[2].imshow(clean_np, cmap='bwr', vmin=vmin, vmax=vmax)
                 axes[2].set_title("Clean Ground Truth")
                 axes[2].axis('off')
 
-                # Add a single colorbar for all subplots
                 fig.colorbar(mappable, ax=axes.ravel().tolist(), shrink=0.75, pad=0.02)
+                plt.tight_layout(rect=[0, 0, 1, 0.94])
                 
-                plt.tight_layout(rect=[0, 0, 1, 0.94]) # Adjust rect to make space for suptitle
-                
-                # Define a unique filename for each individual plot
-                save_path = Path(OUTPUT_DIR) / f"sample_{sample_id_val}_model_{model_info['combo_id']}.png"
+                # *** MODIFICATION START: Update the save path to use the new sample directory ***
+                # The filename is simpler now as sample info is in the folder name.
+                filename = f"model_result_{model_info['combo_id']}.png"
+                save_path = sample_output_dir / filename
+                # *** MODIFICATION END ***
+
                 plt.savefig(save_path)
                 plt.close(fig)
-                print(f"  -> Saved individual plot to {save_path}")
-            # *** MODIFICATION END ***
             
             processed_samples += 1
 
-    print("\nInference and individual plotting script finished.")
+    print("\nInference and organized plotting script finished.")
 
 if __name__ == "__main__":
     main()
