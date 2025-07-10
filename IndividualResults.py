@@ -19,7 +19,7 @@ print("Imports successful", flush=True)
 # ===================================================================
 
 # Directory containing the model .pth files
-MODEL_ROOT = r'wideresults/'
+MODEL_ROOT = r'WeightComparison/'
 
 # Root directory for the dataset
 DATA_ROOT = r"datasets/TopographicData"
@@ -143,7 +143,7 @@ def main():
             params = get_model_params_from_path(path)
             
             model = smp.Unet(
-                encoder_name='resnet34', 
+                encoder_name='resnet18', 
                 encoder_weights=None, 
                 encoder_depth=params['encoder_depth'], 
                 decoder_channels=params['decoder_channels'], 
