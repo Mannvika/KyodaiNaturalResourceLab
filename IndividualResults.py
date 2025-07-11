@@ -19,16 +19,16 @@ print("Imports successful", flush=True)
 # ===================================================================
 
 # Directory containing the model .pth files
-MODEL_ROOT = r'WeightComparison/'
+MODEL_ROOT = r'increaseddataset/'
 
 # Root directory for the dataset
-DATA_ROOT = r"datasets/TopographicData"
+DATA_ROOT = r"datasets/TopographicData2"
 
 # Main directory to save all output folders
-OUTPUT_DIR = "OrganizedTestResults"
+OUTPUT_DIR = "LargerDataSet"
 
 # Number of random test samples to process
-NUM_SAMPLES = 50
+NUM_SAMPLES = 10
 
 # ===================================================================
 
@@ -118,7 +118,7 @@ def main():
     print(f"Using device: {DEVICE}")
 
     # --- DATA LOADING ---
-    manifest_path = Path(r'data_splits') / "test_manifest.csv"
+    manifest_path = Path(r'data_splits2') / "test_manifest.csv"
     if not manifest_path.exists():
         print(f"Manifest file {manifest_path} not found. Cannot proceed.")
         return
