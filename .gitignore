@@ -34,3 +34,5 @@ training_run_results_top.zip
 datasets/TopographicData.zip
 .gitignore
 datasets/TopographicData/manifest.csv
+datasets/TopographicData2.zip
+datasets/TopographicData2/manifest.csv
