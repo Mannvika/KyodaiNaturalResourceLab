@@ -3,7 +3,7 @@
 
 import torch
 import torch.nn as nn
-from torch.utils.data import Dataset, DataLoader, Subset
+from torch.utils.data import Dataset, DataLoader
 import numpy as np
 import matplotlib.pyplot as plt
 import os
@@ -11,6 +11,7 @@ import pandas as pd
 import segmentation_models_pytorch as smp
 import re
 from pathlib import Path
+from collections import defaultdict
 
 print("Imports successful", flush=True)
 
@@ -34,14 +35,14 @@ for file in os.listdir(MODEL_ROOT):
 
 DATA_ROOT = r"datasets/TopographicData"
 NUM_SAMPLES = 10
-OUTPUT_DIR = "IdenticalTestResults2"
+OUTPUT_DIR = "IdenticalTestResults2_ByLoss"
 
 # ===================================================================
 
 
 class PrecomputedNoise2NoiseDataset(Dataset):
     def __init__(self, manifest_file, root_dir, for_training=True):
-        self.root_dir = Path(root_dir) # <-- MODIFICATION: Use pathlib for robustness
+        self.root_dir = Path(root_dir)
         self.for_training = for_training
         try:
             self.manifest = pd.read_csv(manifest_file)
@@ -58,7 +59,6 @@ class PrecomputedNoise2NoiseDataset(Dataset):
         
         record = self.manifest.iloc[idx]
         
-        # <-- MODIFICATION: Switched from os.path.join to pathlib for cross-platform compatibility
         noisy1_path = self.root_dir / record['noisy1_path']
         noisy2_path = self.root_dir / record['noisy2_path']
         clean_path = self.root_dir / record['clean_path']
@@ -83,8 +83,17 @@ class PrecomputedNoise2NoiseDataset(Dataset):
 
 
 def get_model_params_from_path(model_path):
+    """Parses model parameters and complex loss functions from the filename."""
     filename = Path(model_path).name
     params = {}
+    
+    # --- MODIFICATION: Regex now captures combined losses (e.g., MSE+SSIM) ---
+    loss_match = re.search(r'LOSS_([\w\+]+)', filename)
+    if loss_match:
+        params['loss_function'] = loss_match.group(1)
+    else:
+        params['loss_function'] = 'Unknown'
+
     ed_match = re.search(r'ED_(\d+)', filename)
     if ed_match: params['encoder_depth'] = int(ed_match.group(1))
     else: raise ValueError(f"Could not parse encoder depth (ED_*) from {filename}")
@@ -103,41 +112,33 @@ def main():
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {DEVICE}")
 
-    # --- MODIFICATION START ---
-
-    # 1. Path now points to your dedicated test manifest.
     manifest_path = Path(r'data_splits') / "test_manifest.csv"
     if not manifest_path.exists():
         print(f"Manifest file {manifest_path} not found. Cannot proceed.")
         return
     
-    # 2. Load the manifest directly as the test dataset.
     test_dataset = PrecomputedNoise2NoiseDataset(manifest_file=manifest_path, root_dir=DATA_ROOT, for_training=False)
 
-    # 3. Create the DataLoader from the entire dataset, removing the old splitting logic.
     if len(test_dataset) > 0:
-        # The DataLoader will use all samples from the test_dataset.
-        # shuffle=True ensures you get a random assortment if NUM_SAMPLES is less than the total.
         test_loader = DataLoader(test_dataset, batch_size=1, shuffle=True)
         print(f"Loaded {len(test_dataset)} test samples from {manifest_path}.")
     else:
         print("Test dataset is empty. Cannot create test loader.")
         return
-
-    # --- MODIFICATION END ---
         
-    models, model_infos = [], []
+    models_by_loss = defaultdict(list)
+    
     for path in MODEL_PATHS:
         if not os.path.exists(path):
             print(f"Warning: Model path not found, skipping: {path}")
             continue
         try:
-            print(f"\nLoading model from: {path}")
+            print(f"Loading model from: {path}")
             params = get_model_params_from_path(path)
-            model_infos.append(params)
+            loss_function = params['loss_function']
             
             model = smp.Unet(
-                encoder_name='resnet34', 
+                encoder_name='resnet18', 
                 encoder_weights=None, 
                 encoder_depth=params['encoder_depth'], 
                 decoder_channels=params['decoder_channels'], 
@@ -145,28 +146,23 @@ def main():
                 classes=1
             )
             
-            # Use weights_only=True for safer loading
             model.load_state_dict(torch.load(path, map_location=DEVICE, weights_only=True))
             model.to(DEVICE)
             model.eval()
-            models.append(model)
+            
+            models_by_loss[loss_function].append({'model': model, 'params': params})
+            print(f"  > Successfully loaded and assigned to group '{loss_function}'.")
+            
         except Exception as e:
             print(f"Error loading model {path}: {e}")
             
-    if not models:
+    if not models_by_loss:
         print("No models were successfully loaded. Exiting.")
         return
         
-    run_id_parts = []
-    for info in model_infos:
-        combo_id = info['combo_id']
-        loss_match = re.search(r'LOSS_(\w+)', combo_id)
-        loss_part = loss_match.group(1) if loss_match else "na"
-        ed_match = re.search(r'ED_(\d+)', combo_id)
-        ed_part = "ED" + ed_match.group(1) if ed_match else "na"
-        run_id_parts.append(f"{loss_part}-{ed_part}")
-    run_identifier = "_vs_".join(run_id_parts)
-    print(f"Generated Run Identifier for filenames: {run_identifier}")
+    print("\n--- Model Groups ---")
+    for loss, group in models_by_loss.items():
+        print(f"Loss: {loss}, Models: {len(group)}")
 
     print(f"\nStarting inference on {min(NUM_SAMPLES, len(test_loader))} samples...")
     processed_samples = 0
@@ -179,47 +175,61 @@ def main():
                 continue
 
             config_name_val, time_step_val, sample_id_val = config_name[0], time_step.item(), sample_id.item()
-            print(f"Processing Sample {processed_samples + 1}/{NUM_SAMPLES} (ID: {sample_id_val}, Day: {time_step_val}, Sim: {config_name_val})")
+            print(f"\nProcessing Sample {processed_samples + 1}/{NUM_SAMPLES} (ID: {sample_id_val}, Day: {time_step_val}, Sim: {config_name_val})")
             
             noisy_input = noisy_tensor.to(DEVICE)
-            denoised_outputs_np = [model(noisy_input).cpu().squeeze().numpy() for model in models]
             noisy_np = noisy_tensor.cpu().squeeze().numpy()
             clean_np = clean_tensor.cpu().squeeze().numpy()
-            
-            all_images_for_sample = [noisy_np, clean_np] + denoised_outputs_np
-            vmin = min(img.min() for img in all_images_for_sample)
-            vmax = max(img.max() for img in all_images_for_sample)
 
-            num_plots = 2 + len(models)
-            fig, axes = plt.subplots(1, num_plots, figsize=(5 * num_plots, 6))
-            
-            fig.suptitle(f"Day: {time_step_val:.2f}  |  Simulation: {config_name_val}", fontsize=20)
-
-            mappable = None
-            axes[0].imshow(noisy_np, cmap='bwr', vmin=vmin, vmax=vmax)
-            axes[0].set_title("Noisy Input")
-            axes[0].axis('off')
-            
-            axes_denoised = axes[1:-1] if num_plots > 2 else []
-            for j, denoised_img in enumerate(denoised_outputs_np):
-                ax = axes_denoised[j]
-                title_text = model_infos[j]['combo_id'].replace('_', ' ')
-                ax.set_title(f"Denoised: {title_text}", fontsize=8)
-                mappable = ax.imshow(denoised_img, cmap='bwr', vmin=vmin, vmax=vmax)
-                ax.axis('off')
+            for loss_func, model_group in models_by_loss.items():
                 
-            axes[-1].imshow(clean_np, cmap='bwr', vmin=vmin, vmax=vmax)
-            axes[-1].set_title("Clean Ground Truth")
-            axes[-1].axis('off')
+                # --- MODIFICATION: Create a separate sub-folder for each loss function ---
+                loss_output_dir = Path(OUTPUT_DIR) / loss_func
+                os.makedirs(loss_output_dir, exist_ok=True)
+                print(f"  > Generating plot for loss group '{loss_func}'")
+                
+                denoised_outputs_np = [
+                    item['model'](noisy_input).cpu().squeeze().numpy() for item in model_group
+                ]
+                model_infos_group = [item['params'] for item in model_group]
 
-            if mappable:
-                fig.colorbar(mappable, ax=axes.ravel().tolist(), shrink=0.7, pad=0.02)
+                all_images_for_plot = [noisy_np, clean_np] + denoised_outputs_np
+                vmin = min(img.min() for img in all_images_for_plot)
+                vmax = max(img.max() for img in all_images_for_plot)
 
-            plt.tight_layout(rect=[0, 0, 1, 0.95])
-            save_path = Path(OUTPUT_DIR) / f"{run_identifier}_sample_{sample_id_val}.png"
-            plt.savefig(save_path)
-            plt.close(fig)
-            print(f"Saved comparison plot to {save_path}")
+                num_plots = 2 + len(model_group)
+                fig, axes = plt.subplots(1, num_plots, figsize=(5 * num_plots, 6))
+                
+                fig.suptitle(f'Loss: {loss_func} | Day: {time_step_val:.2f} | Sim: {config_name_val}', fontsize=20)
+                
+                mappable = None
+                
+                axes[0].imshow(noisy_np, cmap='bwr', vmin=vmin, vmax=vmax)
+                axes[0].set_title("Noisy Input")
+                axes[0].axis('off')
+
+                for j, (denoised_img, info) in enumerate(zip(denoised_outputs_np, model_infos_group), 1):
+                    ax = axes[j]
+                    title_text = info['combo_id'].replace(f'LOSS_{loss_func}_', '').replace('_', ' ')
+                    ax.set_title(f"Denoised: {title_text}", fontsize=8)
+                    mappable = ax.imshow(denoised_img, cmap='bwr', vmin=vmin, vmax=vmax)
+                    ax.axis('off')
+                
+                axes[-1].imshow(clean_np, cmap='bwr', vmin=vmin, vmax=vmax)
+                axes[-1].set_title("Clean Ground Truth")
+                axes[-1].axis('off')
+
+                if mappable:
+                    fig.colorbar(mappable, ax=axes.ravel().tolist(), shrink=0.7, pad=0.02)
+
+                plt.tight_layout(rect=[0, 0, 1, 0.95])
+                
+                # --- MODIFICATION: Save file inside the loss-specific sub-folder ---
+                save_path = loss_output_dir / f"sample_{sample_id_val}_sim_{config_name_val}.png"
+                plt.savefig(save_path)
+                plt.close(fig)
+                print(f"    - Saved comparison plot to {save_path}")
+            
             processed_samples += 1
 
     print("\nInference and display script finished.")
