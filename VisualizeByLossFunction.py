@@ -34,8 +34,8 @@ for file in os.listdir(MODEL_ROOT):
 
 
 DATA_ROOT = r"datasets/TopographicData"
-NUM_SAMPLES = 10
-OUTPUT_DIR = "IdenticalTestResults2_ByLoss"
+NUM_SAMPLES = 40
+OUTPUT_DIR = "IdenticalTestResults1e-4_ByLoss"
 
 # ===================================================================
 
